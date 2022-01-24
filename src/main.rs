@@ -1,8 +1,8 @@
 extern crate termion;
 
-mod job;
+mod command;
 
-use crate::job::Job;
+use crate::command::Batch;
 use std::io::Write;
 use termion::input::TermRead;
 
@@ -35,8 +35,8 @@ fn main() {
         let line = stdin.read_line();
         if let Ok(Some(line)) = line {
             if !line.is_empty() {
-                let job = Job::new(&line);
-                dbg!("{}", job);
+                let batch = Batch::new(&line);
+                dbg!("{}", batch);
             }
         }
     }

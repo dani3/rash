@@ -12,6 +12,7 @@
 //! let s = "wc -l file.txt";
 //! let job = Batch::new(s);
 //! ```
+use core::mem::size_of;
 use std::{path::PathBuf, str::FromStr};
 
 /// Representation of a shell command.
@@ -43,25 +44,33 @@ impl<'a> Batch<'a> {
         let mut redir_in: Option<PathBuf> = None;
         let mut redir_out: Option<PathBuf> = None;
         if !input.is_empty() {
-            // cat | grep .txt > output.txt < input.txt
-            // cat | grep .txt < input.txt > output.txt
             let limit: usize;
             let only_cmds_str: &str;
             if let Some(pos_in) = input.find('<') {
                 if let Some(pos_out) = input.find('>') {
-                    limit = if pos_in > pos_out { pos_out } else { pos_in };
+                    if pos_in > pos_out {
+                        // cat | grep .txt > output.txt < input.txt
+                        limit = pos_out;
+                        let remainder: &str = &input[limit..];
+                        let tokens: Vec<&str> = remainder.split("<").collect();
+                        redir_out = Some(PathBuf::from_str(&tokens[0][1..].trim()).unwrap());
+                        redir_in = Some(PathBuf::from_str(&tokens[1][1..].trim()).unwrap());
+                    } else {
+                        // cat | grep .txt < input.txt > output.txt
+                        limit = pos_in;
+                        let remainder: &str = &input[limit..];
+                        let tokens: Vec<&str> = remainder.split(">").collect();
+                        redir_in = Some(PathBuf::from_str(&tokens[0][1..].trim()).unwrap());
+                        redir_out = Some(PathBuf::from_str(&tokens[1][1..].trim()).unwrap());
+                    }
                 } else {
                     limit = pos_in;
-                    if let Some(i) = input.split("<").last() {
-                        redir_in = Some(PathBuf::from_str(i.trim()).unwrap());
-                    }
+                    redir_in = Some(PathBuf::from_str(input[limit + 1..].trim()).unwrap());
                 }
             } else {
                 if let Some(pos_out) = input.find('>') {
                     limit = pos_out;
-                    if let Some(i) = input.split(">").last() {
-                        redir_out = Some(PathBuf::from_str(i.trim()).unwrap());
-                    }
+                    redir_out = Some(PathBuf::from_str(input[limit + 1..].trim()).unwrap());
                 } else {
                     limit = input.len();
                 }
@@ -163,5 +172,27 @@ mod tests {
         assert_eq!(job.output.unwrap().as_os_str(), "output.txt");
         assert_eq!(job.cmds[0].args, vec!["input.txt"]);
         assert_eq!(job.input, None);
+    }
+
+    #[test]
+    fn one_command_with_input_and_output_redirection_1() {
+        let s = "cat < input.txt > output.txt";
+        let job = Batch::new(s);
+        assert_eq!(job.cmds.len(), 1);
+        assert_eq!(job.cmds[0].cmd, "cat");
+        assert_eq!(job.input.unwrap().as_os_str(), "input.txt");
+        assert_eq!(job.output.unwrap().as_os_str(), "output.txt");
+        assert!(job.cmds[0].args.is_empty());
+    }
+
+    #[test]
+    fn one_command_with_input_and_output_redirection_2() {
+        let s = "cat > output.txt < input.txt";
+        let job = Batch::new(s);
+        assert_eq!(job.cmds.len(), 1);
+        assert_eq!(job.cmds[0].cmd, "cat");
+        assert_eq!(job.input.unwrap().as_os_str(), "input.txt");
+        assert_eq!(job.output.unwrap().as_os_str(), "output.txt");
+        assert!(job.cmds[0].args.is_empty());
     }
 }

@@ -12,29 +12,34 @@
 //! let s = "wc -l file.txt";
 //! let job = Batch::new(s);
 //! ```
-use core::mem::size_of;
 use std::{path::PathBuf, str::FromStr};
 
 /// Representation of a shell command.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Command<'a> {
-    /// Command.
-    cmd: String,
+    /// Executable name.
+    cmd: &'a str,
     /// Command arguments.
     args: Vec<&'a str>,
 }
 
 impl<'a> Command<'a> {
-    pub fn new(cmd: String, args: Vec<&'a str>) -> Self {
+    pub fn new(cmd: &'a str, args: Vec<&'a str>) -> Self {
         Self { cmd, args }
     }
 }
 
+/// Representation of piped commands to be executed.
+/// This struct also contains the paths to the files used for input/output redirection.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Batch<'a> {
+    /// List of commands to be executed.
     cmds: Vec<Command<'a>>,
+    /// Path to a file to be used as input instead of `stdin`.
     input: Option<PathBuf>,
+    /// Path to a file to be used as output instead of `stdout`.
     output: Option<PathBuf>,
+    /// Flag that indicates if the commands have to be executed in the background.
     is_async: bool,
 }
 
@@ -43,9 +48,12 @@ impl<'a> Batch<'a> {
         let mut commands: Vec<Command<'a>> = Vec::new();
         let mut redir_in: Option<PathBuf> = None;
         let mut redir_out: Option<PathBuf> = None;
+        let mut is_async: bool = false;
+
         if !input.is_empty() {
             let limit: usize;
-            let only_cmds_str: &str;
+
+            is_async = if input.contains('&') { true } else { false };
             if let Some(pos_in) = input.find('<') {
                 if let Some(pos_out) = input.find('>') {
                     if pos_in > pos_out {
@@ -76,23 +84,9 @@ impl<'a> Batch<'a> {
                 }
             }
 
-            only_cmds_str = &input[..limit];
-
-            let tokens = only_cmds_str.trim().split('|');
-            let count = tokens.clone().count();
-            for (i, command) in tokens.enumerate() {
-                // cmd_tokens = [ "cmd $1", "cmd $1 $2", "cmd" ]
-
+            for command in input[..limit].trim().split('|') {
                 let cmd_tokens: Vec<&str> = command.trim().split_whitespace().collect();
-                // If it's the last command, special care needs to be taken as there
-                // could be input/output redirection.
-                //
-                if i == (count - 1) {}
-
-                commands.push(Command::new(
-                    cmd_tokens[0].to_string(),
-                    cmd_tokens[1..].to_vec(),
-                ));
+                commands.push(Command::new(cmd_tokens[0], cmd_tokens[1..].to_vec()));
             }
         }
 
@@ -100,7 +94,7 @@ impl<'a> Batch<'a> {
             cmds: commands,
             input: redir_in,
             output: redir_out,
-            is_async: false,
+            is_async,
         }
     }
 }

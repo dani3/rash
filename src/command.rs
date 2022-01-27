@@ -9,6 +9,8 @@
 //! To parse a simple command simply send a [`str`] when creating a [`Batch`]:
 //!
 //! ```
+//! use rash::command::Batch;
+//!
 //! let s = "wc -l file.txt";
 //! let job = Batch::new(s);
 //! ```
@@ -54,19 +56,27 @@ impl<'a> Batch<'a> {
             let limit: usize;
 
             is_async = if input.contains('&') { true } else { false };
+            // Check if there's input redirection.
             if let Some(pos_in) = input.find('<') {
+                // Then check if there's output redirection.
                 if let Some(pos_out) = input.find('>') {
+                    // Both stdin and stdout are redirected. Now we have to know in which order they appeared.
                     if pos_in > pos_out {
-                        // cat | grep .txt > output.txt < input.txt
+                        // We would reach this block if we have the following command:
+                        //  > cat | grep .txt > output.txt < input.txt
                         limit = pos_out;
+                        // remainder = "> output.txt < input.txt"
                         let remainder: &str = &input[limit..];
                         let tokens: Vec<&str> = remainder.split("<").collect();
                         redir_out = Some(PathBuf::from_str(&tokens[0][1..].trim()).unwrap());
                         redir_in = Some(PathBuf::from_str(&tokens[1][1..].trim()).unwrap());
                     } else {
-                        // cat | grep .txt < input.txt > output.txt
+                        // We would reach this block if we have the following command:
+                        //  > cat | grep .txt < input.txt > output.txt
                         limit = pos_in;
+                        // remainder = "< input.txt > output.txt"
                         let remainder: &str = &input[limit..];
+                        // tokens = [ "< input.txt ", "> output.txt" ]
                         let tokens: Vec<&str> = remainder.split(">").collect();
                         redir_in = Some(PathBuf::from_str(&tokens[0][1..].trim()).unwrap());
                         redir_out = Some(PathBuf::from_str(&tokens[1][1..].trim()).unwrap());
@@ -84,7 +94,7 @@ impl<'a> Batch<'a> {
                 }
             }
 
-            for command in input[..limit].trim().split('|') {
+            for command in input[..limit].split('|') {
                 let cmd_tokens: Vec<&str> = command.trim().split_whitespace().collect();
                 commands.push(Command::new(cmd_tokens[0], cmd_tokens[1..].to_vec()));
             }
